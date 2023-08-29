@@ -3,6 +3,7 @@ import xobjects as xo
 import xpart as xp
 import xtrack as xt
 import xtrack.twiss as xtw
+from tqdm.autonotebook import tqdm
 
 from .generic_writer import GenericWriter
 from .normed_particles import NormedParticles
@@ -90,7 +91,7 @@ def get_normed_part_displacement_and_direction(
     tuple
         displacement, direction
     """
-    direction = _context.nplike_array_type([6, len(norm_part.particle_id)])
+    direction = _context.nplike_array_type([6, len(norm_part.x_norm)])
     direction[0, :] = norm_part.x_norm[argsort] - ref_norm_part.x_norm[argsort_ref]
     direction[1, :] = norm_part.px_norm[argsort] - ref_norm_part.px_norm[argsort_ref]
     direction[2, :] = norm_part.y_norm[argsort] - ref_norm_part.y_norm[argsort_ref]
@@ -99,7 +100,7 @@ def get_normed_part_displacement_and_direction(
         norm_part.zeta_norm[argsort] - ref_norm_part.zeta_norm[argsort_ref]
     )
     direction[5, :] = (
-        norm_part.zeta_norm[argsort] - ref_norm_part.zeta_norm[argsort_ref]
+        norm_part.pzeta_norm[argsort] - ref_norm_part.pzeta_norm[argsort_ref]
     )
 
     displacement = np.sum((direction) ** 2, axis=0) ** 0.5
@@ -178,8 +179,21 @@ class GhostParticleManager:
         self._original_displacement = []
         self._original_direction = []
 
+    def _save_metadata(self, out: GenericWriter):
+        """Save the metadata of the ghost particles.
+
+        Parameters
+        ----------
+        out : GenericWriter
+            Writer to save the metadata.
+        """
+        out.write_data("ghost_name", self._ghost_name)
+        out.write_data("original_displacement", self._original_displacement)
+        out.write_data("original_direction", self._original_direction)
+        out.write_data("use_norm_coord", self._use_norm_coord)
+
     def add_displacement(
-        self, module=1e-8, direction="x", custom_displacement=None, ghost_name=None
+        self, module=1e-6, direction="x", custom_displacement=None, ghost_name=None
     ):
         """Add a ghost particle with a displacement in the given direction.
 
@@ -363,7 +377,7 @@ class GhostParticleManager:
         list
             List of the direction of the displacement for each ghost particle
         """
-        direction_list, displacement_list = self.get_displacement_data(
+        displacement_list, direction_list = self.get_displacement_data(
             get_context_arrays=True
         )
         ref_argsort = np.argsort(self._part.particle_id)
@@ -440,11 +454,11 @@ class GhostParticleManager:
             return displacement_list, direction_list
 
         return [
-            self._context.nparray_from_context_array(direction)
-            for direction in direction_list
-        ], [
             self._context.nparray_from_context_array(displacement)
             for displacement in displacement_list
+        ], [
+            self._context.nparray_from_context_array(direction)
+            for direction in direction_list
         ]
 
     def track_displacement(
@@ -455,6 +469,7 @@ class GhostParticleManager:
         realign_frequency=10,
         custom_realign=False,
         realing_module=None,
+        tqdm_flag=True,
     ):
         """Track the displacement and direction of the ghost particles.
 
@@ -480,6 +495,8 @@ class GhostParticleManager:
         else:
             realing_module = None
 
+        self._save_metadata(out)
+
         sampling_turns = np.sort(np.unique(np.asarray(sampling_turns, dtype=int)))
         max_turn = np.max(sampling_turns)
 
@@ -496,6 +513,7 @@ class GhostParticleManager:
         )
 
         current_turn = 0
+        pbar = tqdm(total=max_turn, disable=not tqdm_flag)
         for event, turn, event_idx in events:
             delta_turn = turn - current_turn
             if delta_turn > 0:
@@ -503,6 +521,7 @@ class GhostParticleManager:
                 for part in self._ghost_part:
                     line.track(part, num_turns=delta_turn)
                 current_turn = turn
+                pbar.update(delta_turn)
 
             if event == "sample":
                 displacement_list, direction_list = self.get_displacement_data(
@@ -567,9 +586,12 @@ class GhostParticleManager:
                 for i, (stored_log_displacement, displacement, name) in enumerate(
                     zip(log_displacement_storage, displacement_list, self._ghost_name)
                 ):
-                    log_displacement_storage[i] = (
-                        np.log10(displacement) + stored_log_displacement
-                    )
+                    stored_log_displacement += np.log10(displacement)
+
+        # save nturns of main particles
+        out.write_data(
+            "at_turn", self._context.nparray_from_context_array(self._part.at_turn)
+        )
 
     def track_displacement_birkhoff(
         self,
@@ -578,6 +600,7 @@ class GhostParticleManager:
         out: GenericWriter,
         custom_realign=False,
         realing_module=None,
+        tqdm_flag=True,
     ):
         """Track the displacement and direction of the ghost particles while using
         the birkhoff weights for the displacement.
@@ -601,6 +624,8 @@ class GhostParticleManager:
         else:
             realing_module = None
 
+        self._save_metadata(out)
+
         sampling_turns = np.sort(np.unique(np.asarray(sampling_turns, dtype=int)))
         max_turn = np.max(sampling_turns)
 
@@ -613,11 +638,13 @@ class GhostParticleManager:
         )
 
         current_turn = 0
+        pbar = tqdm(total=max_turn, disable=not tqdm_flag)
         for t in range(max_turn + 1):
             line.track(self._part, num_turns=1)
             for part in self._ghost_part:
                 line.track(part, num_turns=1)
             current_turn += 1
+            pbar.update(1)
 
             displacement_list, direction_list = self.realign_particles(
                 module=realing_module, get_context_arrays=True
@@ -676,3 +703,8 @@ class GhostParticleManager:
                         f'direction/{name}/{"pzeta_norm" if self._normed_part else "ptau"}/{current_turn}',
                         local_direction[5],
                     )
+
+        # save nturns of main particles
+        out.write_data(
+            "at_turn", self._context.nparray_from_context_array(self._part.at_turn)
+        )

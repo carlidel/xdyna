@@ -174,7 +174,7 @@ class NormedParticles:
         part : xp.Particles
             Particles object
         """
-        mask = part.state <= 0
+        # mask = part.state <= 0
         gemitt_x = (
             self._twiss_data[0] / part._xobject.beta0[0] / part._xobject.gamma0[0]
         )
