@@ -72,7 +72,13 @@ class H5pyWriter(GenericWriter):
             if self.compression is None:
                 f.create_dataset(dataset_name, data=data)
             else:
-                f.create_dataset(dataset_name, data=data, compression=self.compression)
+                try:
+                    f.create_dataset(
+                        dataset_name, data=data, compression=self.compression
+                    )
+                # if the compression is not supported, just create the dataset without compression
+                except TypeError:
+                    f.create_dataset(dataset_name, data=data)
 
     def get_data(self, dataset_name: str):
         """Get data from an HDF5 file.

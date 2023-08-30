@@ -1,6 +1,5 @@
 import itertools
 
-import h5py
 import numpy as np
 from numba import njit
 from tqdm import tqdm
@@ -9,7 +8,7 @@ from .generic_writer import GenericWriter, H5pyWriter, LocalWriter
 
 
 @njit
-def simple_gali(gali_matrix):
+def svd_values_product(gali_matrix):
     if np.any(np.isnan(gali_matrix)):
         return np.nan
     else:
@@ -18,17 +17,17 @@ def simple_gali(gali_matrix):
 
 
 @njit
-def gali(gali_matrix):
+def gali_eval(gali_matrix):
     gali_matrix = np.transpose(gali_matrix, (2, 0, 1))
     gali = []
     for m in gali_matrix:
-        gali.append(simple_gali(m))
+        gali.append(svd_values_product(m))
     gali = np.asarray(gali)
     return gali
 
 
-COORD_LIST = ["x", "px", "y", "py", "zeta", "ptau"]
-NORM_COORD_LIST = ["x_norm", "px_norm", "y_norm", "py_norm", "zeta_norm", "pzeta_norm"]
+COORD_LIST = ("x", "px", "y", "py", "zeta", "ptau")
+NORM_COORD_LIST = ("x_norm", "px_norm", "y_norm", "py_norm", "zeta_norm", "pzeta_norm")
 
 
 def _make_gali_combos(coord_list):
@@ -50,7 +49,7 @@ def gali_extractor(
     input_writer: GenericWriter,
     output_writer: GenericWriter,
     times,
-    coord_list=NORM_COORD_LIST,
+    coord_list=("x_norm", "px_norm", "y_norm", "py_norm", "zeta_norm", "pzeta_norm"),
     which_gali="all",
     custom_combos=None,
     preload_data=False,
@@ -93,7 +92,7 @@ def gali_extractor(
         combo_list = _make_gali_combos(coord_list)[which_gali]
 
     print("evaluating gali")
-    for i, combo in enumerate(tqdm(combo_list)):
+    for combo in tqdm(combo_list):
         for t in tqdm(times):
             dataset_name = f"gali{len(combo)}/{'_'.join(combo)}/{t}"
 
@@ -106,6 +105,6 @@ def gali_extractor(
                     for a in combo
                 ]
             )
-            disp = gali(gali_matrix)
+            disp = gali_eval(gali_matrix)
 
             output_writer.write_data(dataset_name, data=disp)
