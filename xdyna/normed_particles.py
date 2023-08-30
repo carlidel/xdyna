@@ -8,6 +8,9 @@ import xtrack.twiss as xtw
 class NormedParticles:
     """Class to store particles in normalized coordinates."""
 
+    def __len__(self):
+        return self._normed_part.shape[1]
+
     def __init__(
         self,
         twiss: xtw.TwissTable,
