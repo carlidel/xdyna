@@ -270,7 +270,7 @@ class GhostParticleManager:
 
         # check if ghost_name is already used
         if ghost_name is None:
-            ghost_name = f"ghost_{direction}_{module}"
+            ghost_name = f"ghost_{direction}"
         if ghost_name in self._ghost_name:
             raise ValueError("ghost_name is already used")
 
