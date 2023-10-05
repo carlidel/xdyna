@@ -8,6 +8,8 @@ from tqdm.autonotebook import tqdm
 from .generic_writer import GenericWriter
 from .normed_particles import NormedParticles
 
+import warnings
+
 
 def birkhoff_weights(n):
     """Get the Birkhoff weights for a given number of samples.
@@ -120,6 +122,7 @@ class GhostParticleManager:
         twiss=None,
         nemitt_x=None,
         nemitt_y=None,
+        nemitt_z=None,
         idx_pos=0,
     ):
         """Initialize the GhostParticleManager.
@@ -140,6 +143,8 @@ class GhostParticleManager:
         nemitt_y : float, optional
             Normalized emittance in y, by default None, required if use_norm_coord
             is True
+        nemitt_z : float, optional
+            Normalized emittance in z, by default None, if use_norm_coord and nemitt_z is None, a "unitary" emittance is assumed
         idx_pos : int, optional
             Index of the position in the particle array, by default 0, required if
             use_norm_coord is True
@@ -155,16 +160,23 @@ class GhostParticleManager:
                 raise ValueError("If norm_coord is True, nemitt_x must be given")
             if nemitt_y is None:
                 raise ValueError("If norm_coord is True, nemitt_y must be given")
+            if nemitt_z is None:
+                # raise warning
+                warnings.warn(
+                    "Warning: nemitt_z is None, a unitary emittance is assumed"
+                )
 
             self._twiss = twiss
             self._nemitt_x = nemitt_x
             self._nemitt_y = nemitt_y
+            self._nemitt_z = nemitt_z
             self._idx_pos = idx_pos
 
             self._normed_part = NormedParticles(
                 self._twiss,
                 self._nemitt_x,
                 self._nemitt_y,
+                self._nemitt_z,
                 self._context,
                 self._idx_pos,
                 part=self._part,
@@ -294,6 +306,7 @@ class GhostParticleManager:
                 self._twiss,
                 self._nemitt_x,
                 self._nemitt_y,
+                self._nemitt_z,
                 self._context,
                 self._idx_pos,
                 part=self._part,
