@@ -329,8 +329,12 @@ class GhostParticleManager:
         direction_list = []
         displacement_list = []
 
+        if self._use_norm_coord:
+            self._normed_part.phys_to_norm(self._part)
+
         for i, ghost_part in enumerate(self._ghost_part):
             if self._use_norm_coord:
+                ghost_part.phys_to_norm(self._ghost_normed_part[i])
                 argsort_ref = np.argsort(self._part.particle_id)
                 argsort = np.argsort(ghost_part.particle_id)
                 displacement, direction = get_normed_part_displacement_and_direction(
