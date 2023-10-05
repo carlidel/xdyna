@@ -3,7 +3,9 @@ import xobjects as xo
 import xpart as xp
 import xtrack as xt
 import xtrack.twiss as xtw
+from scipy.constants import c as c_light
 
+EW_GIVEN = 2.185575985356659 * (c_light / (4 * np.pi)) * 1e3 / 1e12 
 
 class NormedParticles:
     """Class to store particles in normalized coordinates."""
@@ -16,6 +18,7 @@ class NormedParticles:
         twiss: xtw.TwissTable,
         nemitt_x: float,
         nemitt_y: float,
+        nemitt_z=None,
         _context=xo.ContextCpu(),
         idx_pos=0,
         part=None,
@@ -31,6 +34,9 @@ class NormedParticles:
             Normalized emittance in the horizontal plane.
         nemitt_y : float
             Normalized emittance in the vertical plane.
+        nemitt_z : float, optional
+            Normalized emittance in the longitudinal plane, by default None
+            If None, a unitary emittance is assumed.
         _context : _type_
             xobjects context to be used.
         idx_pos : int, optional
@@ -48,7 +54,7 @@ class NormedParticles:
         """
         self._context = _context
         self._twiss_data, self._w, self._w_inv = NormedParticles.get_twiss_data(
-            twiss, nemitt_x, nemitt_y, _context, idx_pos
+            twiss, nemitt_x, nemitt_y, _context, nemitt_z, idx_pos
         )
 
         if part is None:
@@ -66,6 +72,7 @@ class NormedParticles:
         nemitt_x: float,
         nemitt_y: float,
         _context,
+        nemitt_z=None,
         idx_pos=0,
     ):
         """Get the twiss data for the given twiss object and the given
@@ -81,6 +88,9 @@ class NormedParticles:
             Normalized emittance in y
         _context : xobjects.Context
             Context to use
+        nemitt_z : float, optional
+            Normalized emittance in z, by default None
+            If None, a unitary emittance is assumed.
         idx_pos : int, optional
             Index of the position to use, by default 0
 
@@ -96,7 +106,7 @@ class NormedParticles:
         w_inv : xobjects.Array
             Twiss W inverse matrix
         """
-        twiss_data = _context.nplike_array_type(8)
+        twiss_data = _context.nplike_array_type(9)
 
         twiss_data[0] = nemitt_x
         twiss_data[1] = nemitt_y
@@ -107,6 +117,8 @@ class NormedParticles:
         twiss_data[5] = twiss.py[idx_pos]
         twiss_data[6] = twiss.zeta[idx_pos]
         twiss_data[7] = twiss.ptau[idx_pos]
+
+        twiss_data[8] = nemitt_z if nemitt_z is not None else np.nan
 
         w = _context.nparray_to_context_array(twiss.W_matrix[idx_pos])
         w_inv = _context.nparray_to_context_array(
@@ -144,15 +156,16 @@ class NormedParticles:
         gemitt_y = (
             self._twiss_data[1] / part._xobject.beta0[0] / part._xobject.gamma0[0]
         )
+        gemitt_z = self._twiss_data[8] / (part._xobject.beta0[0] / part._xobject.gamma0[0]) if not np.isnan(self._twiss_data[8]) else 1.0
 
         self._normed_part[0] = part.x - self._twiss_data[2]
         self._normed_part[1] = part.px - self._twiss_data[3]
         self._normed_part[2] = part.y - self._twiss_data[4]
         self._normed_part[3] = part.py - self._twiss_data[5]
         self._normed_part[4] = part.zeta - self._twiss_data[6]
-        self._normed_part[5] = (part.ptau - self._twiss_data[7]) / part._xobject.beta0[
-            0
-        ]
+        self._normed_part[5] = (
+            (part.ptau - self._twiss_data[7]) / part._xobject.beta0[0]
+        )
 
         self._normed_part = np.dot(self._w_inv, self._normed_part)
 
@@ -160,6 +173,8 @@ class NormedParticles:
         self._normed_part[1] /= np.sqrt(gemitt_x)
         self._normed_part[2] /= np.sqrt(gemitt_y)
         self._normed_part[3] /= np.sqrt(gemitt_y)
+        self._normed_part[4] /= np.sqrt(gemitt_z)
+        self._normed_part[5] /= np.sqrt(gemitt_z)
 
         self._normed_part[:, mask] = np.nan
 
@@ -184,6 +199,7 @@ class NormedParticles:
         gemitt_y = (
             self._twiss_data[1] / part._xobject.beta0[0] / part._xobject.gamma0[0]
         )
+        gemitt_z = self._twiss_data[8] / (part._xobject.beta0[0] / part._xobject.gamma0[0]) if not np.isnan(self._twiss_data[8]) else 1.0
 
         normed = self._normed_part.copy()
         normed[0] *= np.sqrt(gemitt_x)
