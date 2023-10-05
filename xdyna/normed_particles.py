@@ -10,6 +10,9 @@ EW_GIVEN = 2.185575985356659 * (c_light / (4 * np.pi)) * 1e3 / 1e12
 class NormedParticles:
     """Class to store particles in normalized coordinates."""
 
+    def __len__(self):
+        return self._normed_part.shape[1]
+
     def __init__(
         self,
         twiss: xtw.TwissTable,
