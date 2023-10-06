@@ -51,6 +51,8 @@ def get_part_displacement_and_direction(
     argsort_ref = np.argsort(ref_part.particle_id)
     argsort = np.argsort(part.particle_id)
 
+    mask = np.logical_and(ref_part.state[argsort_ref] <= 0, part.state[argsort] <= 0)
+
     direction = _context.nplike_array_type([6, len(part.particle_id)])
     direction[0, :] = part.x[argsort] - ref_part.x[argsort_ref]
     direction[1, :] = part.px[argsort] - ref_part.px[argsort_ref]
@@ -58,6 +60,8 @@ def get_part_displacement_and_direction(
     direction[3, :] = part.py[argsort] - ref_part.py[argsort_ref]
     direction[4, :] = part.zeta[argsort] - ref_part.zeta[argsort_ref]
     direction[5, :] = part.ptau[argsort] - ref_part.ptau[argsort_ref]
+
+    direction[:, mask] = np.nan
 
     displacement = np.sum((direction) ** 2, axis=0) ** 0.5
 
@@ -282,7 +286,7 @@ class GhostParticleManager:
 
         # check if ghost_name is already used
         if ghost_name is None:
-            ghost_name = f"ghost_{direction}"
+            ghost_name = f"{direction}"
         if ghost_name in self._ghost_name:
             raise ValueError("ghost_name is already used")
 
@@ -347,7 +351,7 @@ class GhostParticleManager:
 
         for i, ghost_part in enumerate(self._ghost_part):
             if self._use_norm_coord:
-                ghost_part.phys_to_norm(self._ghost_normed_part[i])
+                self._ghost_normed_part[i].phys_to_norm(ghost_part)
                 argsort_ref = np.argsort(self._part.particle_id)
                 argsort = np.argsort(ghost_part.particle_id)
                 displacement, direction = get_normed_part_displacement_and_direction(

@@ -206,6 +206,8 @@ class NormedParticles:
         normed[1] *= np.sqrt(gemitt_x)
         normed[2] *= np.sqrt(gemitt_y)
         normed[3] *= np.sqrt(gemitt_y)
+        normed[4] *= np.sqrt(gemitt_z)
+        normed[5] *= np.sqrt(gemitt_z)
 
         normed = np.dot(self._w, normed)
 

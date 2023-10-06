@@ -11,6 +11,14 @@ class GenericWriter(ABC):
         pass
 
     @abstractmethod
+    def __getitem__(self, key):
+        pass
+
+    @abstractmethod
+    def __setitem__(self, key, value):
+        pass
+
+    @abstractmethod
     def write_data(self, dataset_name: str, data: np.ndarray, overwrite=False):
         pass
 
@@ -72,13 +80,17 @@ class H5pyWriter(GenericWriter):
             if self.compression is None:
                 f.create_dataset(dataset_name, data=data)
             else:
-                try:
-                    f.create_dataset(
-                        dataset_name, data=data, compression=self.compression
-                    )
-                # if the compression is not supported, just create the dataset without compression
-                except TypeError:
+                # if the data is a scalar, just create the dataset without compression
+                if np.isscalar(data):
                     f.create_dataset(dataset_name, data=data)
+                else:
+                    try:
+                        f.create_dataset(
+                            dataset_name, data=data, compression=self.compression
+                        )
+                    # if the compression is not supported, just create the dataset without compression
+                    except TypeError:
+                        f.create_dataset(dataset_name, data=data)
 
     def get_data(self, dataset_name: str):
         """Get data from an HDF5 file.
@@ -100,7 +112,14 @@ class H5pyWriter(GenericWriter):
                     f"Dataset {dataset_name} does not exist in file {self.filename}"
                 )
 
-            return f[dataset_name][:]
+            if isinstance(f[dataset_name], h5py.Dataset):
+                return f[dataset_name][()]
+
+            # if the dataset is a group, raise an error
+            else:
+                raise ValueError(
+                    f"Dataset {dataset_name} is a group, not a dataset, in file {self.filename}"
+                )
 
     def dataset_exists(self, dataset_name: str):
         """Check if a dataset exists in the HDF5 file.
@@ -136,6 +155,36 @@ class H5pyWriter(GenericWriter):
             localwriter.write_data(path, data)
 
         return localwriter
+
+    def __getitem__(self, key):
+        return self.get_data(key)
+
+    def __setitem__(self, key, value):
+        self.write_data(key, value, overwrite=True)
+
+    def keys(self, key: str = None):
+        """Get the keys of the datasets in the HDF5 file.
+
+        Parameters
+        ----------
+        key : str, optional
+            If specified, only return the keys of the datasets in the group specified by key, by default None
+
+        Returns
+        -------
+        list
+            List of keys
+        """
+        with h5py.File(self.filename, mode="r") as f:
+            if key is None:
+                return list(f.keys())
+            else:
+                # if it is a group return the keys of the datasets in the group
+                if isinstance(f[key], h5py.Group):
+                    return list(f[key].keys())
+                # if it is a dataset return an empty list
+                else:
+                    return []
 
 
 class LocalWriter(GenericWriter):
@@ -183,6 +232,12 @@ class LocalWriter(GenericWriter):
                     f"Dataset {dataset_name} does not exist in dictionary {self.data}"
                 )
             d = d[key]
+
+        # if this is still a dictionary, raise an error
+        if isinstance(d, dict):
+            raise ValueError(
+                f"Dataset {dataset_name} is a group, not a dataset, in dictionary {self.data}"
+            )
         return d
 
     def dataset_exists(self, dataset_name: str):
@@ -211,3 +266,33 @@ class LocalWriter(GenericWriter):
             h5pywriter.write_data(path, data)
 
         return h5pywriter
+
+    def __getitem__(self, key):
+        return self.get_data(key)
+
+    def __setitem__(self, key, value):
+        self.write_data(key, value, overwrite=True)
+
+    def keys(self, key: str = None):
+        """Get the keys of the datasets in the HDF5 file.
+
+        Parameters
+        ----------
+        key : str, optional
+            If specified, only return the keys of the datasets in the group specified by key, by default None
+
+        Returns
+        -------
+        list
+            List of keys
+        """
+        with h5py.File(self.filename, mode="r") as f:
+            if key is None:
+                return list(f.keys())
+            else:
+                # if it is a group return the keys of the datasets in the group
+                if isinstance(f[key], dict):
+                    return list(f[key].keys())
+                # if it is a dataset return an empty list
+                else:
+                    return []
