@@ -2,7 +2,7 @@ import itertools
 
 import numpy as np
 from numba import njit
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 from .generic_writer import GenericWriter, H5pyWriter, LocalWriter
 
@@ -49,7 +49,7 @@ def gali_extractor(
     input_writer: GenericWriter,
     output_writer: GenericWriter,
     times,
-    coord_list=("x_norm", "px_norm", "y_norm", "py_norm", "zeta_norm", "pzeta_norm"),
+    coord_list=NORM_COORD_LIST,
     which_gali="all",
     custom_combos=None,
     preload_data=False,
@@ -97,7 +97,7 @@ def gali_extractor(
     if coord_list_nested is None:
         coord_list_nested = coord_list.copy()
 
-    nested_dict = {a:b for a,b in zip(coord_list, coord_list_nested)}
+    nested_dict = dict(zip(coord_list, coord_list_nested))
 
     print("evaluating gali")
     for combo in tqdm(combo_list):

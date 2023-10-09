@@ -1,33 +1,12 @@
+import os
+import warnings
+
 import numpy as np
 import xobjects as xo
 import xpart as xp
-import xtrack as xt
-import xtrack.twiss as xtw
-from tqdm.autonotebook import tqdm
 
 from .generic_writer import GenericWriter
 from .normed_particles import NormedParticles
-
-import warnings
-
-
-def birkhoff_weights(n):
-    """Get the Birkhoff weights for a given number of samples.
-
-    Parameters
-    ----------
-    n : int
-        Number of samples.
-
-    Returns
-    -------
-    np.ndarray
-        Array of Birkhoff weights.
-    """
-    weights = np.arange(n, dtype=np.float64)
-    weights /= n
-    weights = np.exp(-1 / (weights * (1 - weights)))
-    return weights / np.sum(weights)
 
 
 def get_part_displacement_and_direction(
@@ -150,7 +129,8 @@ class GhostParticleManager:
         nemitt_z : float, optional
             Normalized emittance in z, by default None, if use_norm_coord and nemitt_z is None, a "unitary" emittance is assumed
         idx_pos : int, optional
-            Index of the position in the particle array, by default 0, required if
+            Index of the position in the line, used to pick the desired set of
+            twiss values from the twiss object, by default 0, required if
             use_norm_coord is True
         """
         self._part = part
@@ -195,18 +175,25 @@ class GhostParticleManager:
         self._original_displacement = []
         self._original_direction = []
 
-    def _save_metadata(self, out: GenericWriter):
+    def save_metadata(self, out: GenericWriter, out_header="gpm_metadata"):
         """Save the metadata of the ghost particles.
 
         Parameters
         ----------
         out : GenericWriter
             Writer to save the metadata.
+        out_header : str, optional
+            Path header to be used, by default ""
         """
-        out.write_data("ghost_name", self._ghost_name)
-        out.write_data("original_displacement", self._original_displacement)
-        out.write_data("original_direction", self._original_direction)
-        out.write_data("use_norm_coord", self._use_norm_coord)
+        out.write_data(os.path.join(out_header, "ghost_name"), self._ghost_name)
+        out.write_data(
+            os.path.join(out_header, "original_displacement"),
+            self._original_displacement,
+        )
+        out.write_data(
+            os.path.join(out_header, "original_direction"), self._original_direction
+        )
+        out.write_data(os.path.join(out_header, "use_norm_coord"), self._use_norm_coord)
 
     def add_displacement(
         self, module=1e-6, direction="x", custom_displacement=None, ghost_name=None
@@ -482,250 +469,77 @@ class GhostParticleManager:
             for direction in direction_list
         ]
 
-    def track_displacement(
-        self,
-        line: xt.Line,
-        sampling_turns,
-        out: GenericWriter,
-        realign_frequency=10,
-        custom_realign=False,
-        realing_module=None,
-        tqdm_flag=True,
-    ):
-        """Track the displacement and direction of the ghost particles.
+    # Class properties
 
-        Parameters
-        ----------
-        line : xt.Line
-            The line to track
-        sampling_turns : list
-            List of the turns to sample the displacement
-        out : GenericWriter
-            The writer to write the data
-        realign_frequency : int, optional
-            The frequency of realignment, by default 10
-        custom_realign : bool, optional
-            If True, the realignment is done by the realing_module, by default
-            False
-        realing_module : float, optional
-            The module to use for realignment, by default None
-        """
-        if custom_realign:
-            if realing_module is None:
-                raise ValueError("custom_realign is True but realing_module is None")
-        else:
-            realing_module = None
+    @property
+    def part(self):
+        """Original particles."""
+        return self._part
 
-        self._save_metadata(out)
+    @property
+    def ghost_part(self):
+        """Ghost particles."""
+        return self._ghost_part
 
-        sampling_turns = np.sort(np.unique(np.asarray(sampling_turns, dtype=int)))
-        max_turn = np.max(sampling_turns)
+    @property
+    def ghost_name(self):
+        """Names of the ghost particles."""
+        return self._ghost_name
 
-        realigning_turns = np.arange(0, max_turn + 1, realign_frequency)[1:]
+    @property
+    def original_displacement(self):
+        """Original displacement of the ghost particles."""
+        return self._original_displacement
 
-        s_events = [("sample", t, i) for i, t in enumerate(sampling_turns)]
-        r_events = [("realign", t, i) for i, t in enumerate(realigning_turns)]
-        events = sorted(
-            s_events + r_events, key=lambda x: x[1] + 0.5 if x[0] == "realign" else x[1]
-        )
+    @property
+    def original_direction(self):
+        """Original direction of the ghost particles."""
+        return self._original_direction
 
-        log_displacement_storage = self._context.nplike_array_type(
-            (len(self._ghost_name), len(self._part.particle_id))
-        )
+    @property
+    def use_norm_coord(self):
+        """If True, normalized coordinates are used."""
+        return self._use_norm_coord
 
-        current_turn = 0
-        pbar = tqdm(total=max_turn, disable=not tqdm_flag)
-        for event, turn, event_idx in events:
-            delta_turn = turn - current_turn
-            if delta_turn > 0:
-                line.track(self._part, num_turns=delta_turn)
-                for part in self._ghost_part:
-                    line.track(part, num_turns=delta_turn)
-                current_turn = turn
-                pbar.update(delta_turn)
+    @property
+    def normed_part(self):
+        """Original particles in normalized coordinates. Available only if
+        use_norm_coord is True."""
+        return self._normed_part
 
-            if event == "sample":
-                displacement_list, direction_list = self.get_displacement_data(
-                    get_context_arrays=True
-                )
-                for i, (
-                    stored_log_displacement,
-                    displacement,
-                    direction,
-                    name,
-                ) in enumerate(
-                    zip(
-                        log_displacement_storage,
-                        displacement_list,
-                        direction_list,
-                        self._ghost_name,
-                    )
-                ):
-                    log_displacement_to_save = (
-                        np.log10(displacement) + stored_log_displacement
-                    )
+    @property
+    def ghost_normed_part(self):
+        """Ghost particles in normalized coordinates. Available only if
+        use_norm_coord is True."""
+        return self._ghost_normed_part
 
-                    out.write_data(
-                        f"displacement/{name}/{current_turn}",
-                        self._context.nparray_from_context_array(
-                            log_displacement_to_save / current_turn
-                        ),
-                    )
-                    local_direction = self._context.nparray_from_context_array(
-                        direction
-                    )
-                    out.write_data(
-                        f'direction/{name}/{"x_norm" if self._normed_part else "x"}/{current_turn}',
-                        local_direction[0],
-                    )
-                    out.write_data(
-                        f'direction/{name}/{"px_norm" if self._normed_part else "px"}/{current_turn}',
-                        local_direction[1],
-                    )
-                    out.write_data(
-                        f'direction/{name}/{"y_norm" if self._normed_part else "y"}/{current_turn}',
-                        local_direction[2],
-                    )
-                    out.write_data(
-                        f'direction/{name}/{"py_norm" if self._normed_part else "py"}/{current_turn}',
-                        local_direction[3],
-                    )
-                    out.write_data(
-                        f'direction/{name}/{"zeta_norm" if self._normed_part else "zeta"}/{current_turn}',
-                        local_direction[4],
-                    )
-                    out.write_data(
-                        f'direction/{name}/{"pzeta_norm" if self._normed_part else "ptau"}/{current_turn}',
-                        local_direction[5],
-                    )
+    @property
+    def twiss(self):
+        """Twiss object. Available only if use_norm_coord is True."""
+        return self._twiss
 
-            elif event == "realign":
-                displacement_list, direction_list = self.realign_particles(
-                    module=realing_module, get_context_arrays=True
-                )
+    @property
+    def nemitt_x(self):
+        """Normalized emittance in x. Available only if use_norm_coord is True."""
+        return self._nemitt_x
 
-                for i, (stored_log_displacement, displacement, name) in enumerate(
-                    zip(log_displacement_storage, displacement_list, self._ghost_name)
-                ):
-                    stored_log_displacement += np.log10(displacement)
+    @property
+    def nemitt_y(self):
+        """Normalized emittance in y. Available only if use_norm_coord is True."""
+        return self._nemitt_y
 
-        # save nturns of main particles
-        out.write_data(
-            "at_turn", self._context.nparray_from_context_array(self._part.at_turn)
-        )
+    @property
+    def nemitt_z(self):
+        """Normalized emittance in z. Available only if use_norm_coord is True."""
+        return self._nemitt_z
 
-    def track_displacement_birkhoff(
-        self,
-        line: xt.Line,
-        sampling_turns,
-        out: GenericWriter,
-        custom_realign=False,
-        realing_module=None,
-        tqdm_flag=True,
-    ):
-        """Track the displacement and direction of the ghost particles while using
-        the birkhoff weights for the displacement.
+    @property
+    def idx_pos(self):
+        """Index of the position in the line. Used for twiss. Available only if
+        use_norm_coord is True."""
+        return self._idx_pos
 
-        Parameters
-        ----------
-        line : xt.Line
-            The line to track
-        sampling_turns : list
-            List of the turns to sample the displacement
-        out : GenericWriter
-            The writer to write the data
-        custom_realign : bool, optional
-            If True, the realignment is done by the realing_module, by default False
-        realing_module : float, optional
-            The module to use for realignment, by default None
-        """
-        if custom_realign:
-            if realing_module is None:
-                raise ValueError("custom_realign is True but realing_module is None")
-        else:
-            realing_module = None
-
-        self._save_metadata(out)
-
-        sampling_turns = np.sort(np.unique(np.asarray(sampling_turns, dtype=int)))
-        max_turn = np.max(sampling_turns)
-
-        birk_weights_list = [
-            self._context.nparray_to_context_array(birkhoff_weights(t))
-            for t in sampling_turns
-        ]
-        birk_log_displacement_storage = self._context.nplike_array_type(
-            (len(sampling_turns), len(self._ghost_name), len(self._part.particle_id))
-        )
-
-        current_turn = 0
-        pbar = tqdm(total=max_turn, disable=not tqdm_flag)
-        for t in range(max_turn + 1):
-            line.track(self._part, num_turns=1)
-            for part in self._ghost_part:
-                line.track(part, num_turns=1)
-            current_turn += 1
-            pbar.update(1)
-
-            displacement_list, direction_list = self.realign_particles(
-                module=realing_module, get_context_arrays=True
-            )
-
-            for s_idx, sample in enumerate(sampling_turns):
-                if current_turn <= sample:
-                    for i, (birk_stored_log_displacement, displacement) in enumerate(
-                        zip(birk_log_displacement_storage[s_idx], displacement_list)
-                    ):
-                        birk_log_displacement_storage[s_idx][i] = (
-                            np.log10(displacement) * birk_weights_list[s_idx][t]
-                            + birk_stored_log_displacement
-                        )
-
-            if current_turn in sampling_turns:
-                s_idx = np.where(sampling_turns == current_turn)[0][0]
-
-                for i, (stored_log_displacement, direction, name) in enumerate(
-                    zip(
-                        birk_log_displacement_storage[s_idx],
-                        direction_list,
-                        self._ghost_name,
-                    )
-                ):
-                    out.write_data(
-                        f"displacement/{name}/{current_turn}",
-                        self._context.nparray_from_context_array(
-                            stored_log_displacement
-                        ),
-                    )
-                    local_direction = self._context.nparray_from_context_array(
-                        direction
-                    )
-                    out.write_data(
-                        f'direction/{name}/{"x_norm" if self._normed_part else "x"}/{current_turn}',
-                        local_direction[0],
-                    )
-                    out.write_data(
-                        f'direction/{name}/{"px_norm" if self._normed_part else "px"}/{current_turn}',
-                        local_direction[1],
-                    )
-                    out.write_data(
-                        f'direction/{name}/{"y_norm" if self._normed_part else "y"}/{current_turn}',
-                        local_direction[2],
-                    )
-                    out.write_data(
-                        f'direction/{name}/{"py_norm" if self._normed_part else "py"}/{current_turn}',
-                        local_direction[3],
-                    )
-                    out.write_data(
-                        f'direction/{name}/{"zeta_norm" if self._normed_part else "zeta"}/{current_turn}',
-                        local_direction[4],
-                    )
-                    out.write_data(
-                        f'direction/{name}/{"pzeta_norm" if self._normed_part else "ptau"}/{current_turn}',
-                        local_direction[5],
-                    )
-
-        # save nturns of main particles
-        out.write_data(
-            "at_turn", self._context.nparray_from_context_array(self._part.at_turn)
-        )
+    @property
+    def context(self):
+        """Context used."""
+        return self._context

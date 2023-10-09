@@ -19,7 +19,7 @@ class GenericWriter(ABC):
         pass
 
     @abstractmethod
-    def write_data(self, dataset_name: str, data: np.ndarray, overwrite=False):
+    def write_data(self, dataset_name: str, data, overwrite=False):
         pass
 
     @abstractmethod
@@ -48,9 +48,16 @@ class H5pyWriter(GenericWriter):
             if isinstance(value, h5py.Group):
                 yield from self._explore_h5py_group(value, new_prefix)
             else:
-                yield new_prefix, value[()]
+                to_return = value[()]
+                # if the data is in bytes, try to decode it
+                if isinstance(to_return, bytes):
+                    try:
+                        to_return = to_return.decode("utf-8")
+                    except UnicodeDecodeError:
+                        pass
+                yield new_prefix, to_return
 
-    def write_data(self, dataset_name: str, data: np.ndarray, overwrite=False):
+    def write_data(self, dataset_name: str, data, overwrite=False):
         """Write data to an HDF5 file.
 
         Parameters
@@ -62,6 +69,10 @@ class H5pyWriter(GenericWriter):
         overwrite : bool, optional
             If True, overwrite the dataset if it already exists, by default False, if set to "raise" raise an error if the dataset already exists
         """
+        # if the data is a string, convert it to bytes
+        if isinstance(data, str):
+            data = data.encode("utf-8")
+
         with h5py.File(self.filename, mode="a") as f:
             # check if dataset already exists
             if dataset_name in f:
@@ -90,6 +101,7 @@ class H5pyWriter(GenericWriter):
                         )
                     # if the compression is not supported, just create the dataset without compression
                     except TypeError:
+                        print("Compression not supported for data of type", type(data))
                         f.create_dataset(dataset_name, data=data)
 
     def get_data(self, dataset_name: str):
@@ -113,13 +125,19 @@ class H5pyWriter(GenericWriter):
                 )
 
             if isinstance(f[dataset_name], h5py.Dataset):
-                return f[dataset_name][()]
+                data = f[dataset_name][()]
+                # if data is in bytes, try to decode it
+                if isinstance(data, bytes):
+                    try:
+                        data = data.decode("utf-8")
+                    except UnicodeDecodeError:
+                        pass
+                return data
 
             # if the dataset is a group, raise an error
-            else:
-                raise ValueError(
-                    f"Dataset {dataset_name} is a group, not a dataset, in file {self.filename}"
-                )
+            raise ValueError(
+                f"Dataset {dataset_name} is a group, not a dataset, in file {self.filename}"
+            )
 
     def dataset_exists(self, dataset_name: str):
         """Check if a dataset exists in the HDF5 file.
@@ -162,7 +180,7 @@ class H5pyWriter(GenericWriter):
     def __setitem__(self, key, value):
         self.write_data(key, value, overwrite=True)
 
-    def keys(self, key: str = None):
+    def keys(self, key=None):
         """Get the keys of the datasets in the HDF5 file.
 
         Parameters
@@ -178,13 +196,11 @@ class H5pyWriter(GenericWriter):
         with h5py.File(self.filename, mode="r") as f:
             if key is None:
                 return list(f.keys())
-            else:
-                # if it is a group return the keys of the datasets in the group
-                if isinstance(f[key], h5py.Group):
-                    return list(f[key].keys())
-                # if it is a dataset return an empty list
-                else:
-                    return []
+            # if it is a group return the keys of the datasets in the group
+            if isinstance(f[key], h5py.Group):
+                return list(f[key].keys())
+            # if it is a dataset return an empty list
+            return []
 
 
 class LocalWriter(GenericWriter):
@@ -213,7 +229,7 @@ class LocalWriter(GenericWriter):
         self.filename = filename
         self.data = {}
 
-    def write_data(self, dataset_name: str, data: np.ndarray, overwrite=False):
+    def write_data(self, dataset_name: str, data, overwrite=False):
         # convert dataset_name path to a list
         dataset_name_list = dataset_name.split("/")
         # check if dataset already exists in nested dictionary
