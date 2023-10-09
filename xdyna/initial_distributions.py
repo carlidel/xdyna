@@ -3,26 +3,12 @@ trackings, and provides help in saving the configurations chosen in a GenericWri
 object. The initial distributions can then be re-constructed from the saved
 configuration parameters in the GenericWriter object.
 """
-import datetime
-import json
 import os
-import sys
-import tempfile
-import time
-import warnings
 from math import floor
-from pathlib import Path
 
 # from scipy.constants import c as clight
 import numpy as np
-import pandas as pd
-import xobjects as xo
-import xpart as xp
-import xtrack as xt
 from numpy.random import default_rng
-from scipy import integrate, interpolate
-from scipy.optimize import curve_fit
-from scipy.special import lambertw as W
 
 from .generic_writer import GenericWriter
 
