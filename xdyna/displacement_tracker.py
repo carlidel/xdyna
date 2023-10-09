@@ -190,9 +190,10 @@ def track_displacement_birkhoff(
             category=UserWarning,
         )
 
-    sampling_turns = (
-        np.sort(np.unique(np.asarray(sampling_turns, dtype=int))) // realign_frequency
-    ) * realign_frequency
+    sampling_turns = np.unique(
+        (((np.asarray(sampling_turns, dtype=int))) // realign_frequency)
+        * realign_frequency
+    )
     max_turn = np.max(sampling_turns)
 
     n_realignments = sampling_turns // realign_frequency
