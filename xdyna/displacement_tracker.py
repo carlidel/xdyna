@@ -37,9 +37,9 @@ def track_displacement(
         If True, show the progress bar, by default True
     """
     if realign_module is None:
-        realign_module = gpm.original_displacement
+        realign_module_list = gpm.original_displacement
     else:
-        realign_module = np.ones_like(gpm.original_displacement) * realign_module
+        realign_module_list = np.ones_like(gpm.original_displacement) * realign_module
 
     gpm.save_metadata(out)
 
@@ -83,7 +83,7 @@ def track_displacement(
                 zip(
                     log_displacement_storage,
                     displacement_list,
-                    realign_module,
+                    realign_module_list,
                     direction_list,
                     gpm.ghost_name,
                 )
@@ -133,7 +133,7 @@ def track_displacement(
                 zip(
                     log_displacement_storage,
                     displacement_list,
-                    realign_module,
+                    realign_module_list,
                     gpm.ghost_name,
                 )
             ):
@@ -176,9 +176,9 @@ def track_displacement_birkhoff(
         If True, show the progress bar, by default True
     """
     if realign_module is None:
-        realign_module = gpm.original_displacement
+        realign_module_list = gpm.original_displacement
     else:
-        realign_module = np.ones_like(gpm.original_displacement) * realign_module
+        realign_module_list = np.ones_like(gpm.original_displacement) * realign_module
     gpm.save_metadata(out)
 
     if np.any(np.asarray(sampling_turns, dtype=int) % realign_frequency != 0):
@@ -242,7 +242,7 @@ def track_displacement_birkhoff(
                         zip(
                             birk_log_displacement_storage[s_idx],
                             displacement_list,
-                            realign_module,
+                            realign_module_list,
                         )
                     ):
                         birk_log_displacement_storage[s_idx][i] = (
@@ -252,7 +252,9 @@ def track_displacement_birkhoff(
                         )
             if include_no_birkhoff:
                 for i, (stored_log_displacement, displacement, realign) in enumerate(
-                    zip(log_displacement_storage, displacement_list, realign_module)
+                    zip(
+                        log_displacement_storage, displacement_list, realign_module_list
+                    )
                 ):
                     log_displacement_storage[i] += np.log10(displacement / realign)
 
@@ -265,7 +267,7 @@ def track_displacement_birkhoff(
                 zip(
                     birk_log_displacement_storage[s_idx],
                     direction_list,
-                    realign_module,
+                    realign_module_list,
                     gpm.ghost_name,
                 )
             ):
