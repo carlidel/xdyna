@@ -6,25 +6,7 @@ from tqdm.auto import tqdm
 
 from .generic_writer import GenericWriter
 from .ghost_particle_manager import GhostParticleManager
-
-
-def birkhoff_weights(n):
-    """Get the Birkhoff weights for a given number of samples.
-
-    Parameters
-    ----------
-    n : int
-        Number of samples.
-
-    Returns
-    -------
-    np.ndarray
-        Array of Birkhoff weights.
-    """
-    weights = np.arange(n, dtype=np.float64)
-    weights /= n
-    weights = np.exp(-1 / (weights * (1 - weights)))
-    return weights / np.sum(weights)
+from .tools import birkhoff_weights
 
 
 def track_displacement(
@@ -54,6 +36,11 @@ def track_displacement(
     tqdm_flag : bool, optional
         If True, show the progress bar, by default True
     """
+    if realign_module is None:
+        realign_module = gpm.original_displacement
+    else:
+        realign_module = np.ones_like(gpm.original_displacement) * realign_module
+
     gpm.save_metadata(out)
 
     sampling_turns = np.sort(np.unique(np.asarray(sampling_turns, dtype=int)))
@@ -89,18 +76,20 @@ def track_displacement(
             for i, (
                 stored_log_displacement,
                 displacement,
+                realign,
                 direction,
                 name,
             ) in enumerate(
                 zip(
                     log_displacement_storage,
                     displacement_list,
+                    realign_module,
                     direction_list,
                     gpm.ghost_name,
                 )
             ):
                 log_displacement_to_save = (
-                    np.log10(displacement) + stored_log_displacement
+                    np.log10(displacement / realign) + stored_log_displacement
                 )
 
                 out.write_data(
@@ -140,10 +129,15 @@ def track_displacement(
                 module=realign_module, get_context_arrays=True
             )
 
-            for i, (stored_log_displacement, displacement, name) in enumerate(
-                zip(log_displacement_storage, displacement_list, gpm.ghost_name)
+            for i, (stored_log_displacement, displacement, realign, name) in enumerate(
+                zip(
+                    log_displacement_storage,
+                    displacement_list,
+                    realign_module,
+                    gpm.ghost_name,
+                )
             ):
-                stored_log_displacement += np.log10(displacement)
+                stored_log_displacement += np.log10(displacement / realign)
 
     # save nturns of main particles
     out.write_data("at_turn", gpm.context.nparray_from_context_array(gpm.part.at_turn))
@@ -181,6 +175,10 @@ def track_displacement_birkhoff(
     tqdm_flag : bool, optional
         If True, show the progress bar, by default True
     """
+    if realign_module is None:
+        realign_module = gpm.original_displacement
+    else:
+        realign_module = np.ones_like(gpm.original_displacement) * realign_module
     gpm.save_metadata(out)
 
     if np.any(np.asarray(sampling_turns, dtype=int) % realign_frequency != 0):
@@ -236,28 +234,38 @@ def track_displacement_birkhoff(
 
             for s_idx, sample in enumerate(sampling_turns):
                 if current_turn <= sample:
-                    for i, (birk_stored_log_displacement, displacement) in enumerate(
-                        zip(birk_log_displacement_storage[s_idx], displacement_list)
+                    for i, (
+                        birk_stored_log_displacement,
+                        displacement,
+                        realign,
+                    ) in enumerate(
+                        zip(
+                            birk_log_displacement_storage[s_idx],
+                            displacement_list,
+                            realign_module,
+                        )
                     ):
                         birk_log_displacement_storage[s_idx][i] = (
-                            np.log10(displacement) * birk_weights_list[s_idx][event_idx]
+                            np.log10(displacement / realign)
+                            * birk_weights_list[s_idx][event_idx]
                             + birk_stored_log_displacement
                         )
             if include_no_birkhoff:
-                for i, (stored_log_displacement, displacement) in enumerate(
-                    zip(log_displacement_storage, displacement_list)
+                for i, (stored_log_displacement, displacement, realign) in enumerate(
+                    zip(log_displacement_storage, displacement_list, realign_module)
                 ):
-                    log_displacement_storage[i] += np.log10(displacement)
+                    log_displacement_storage[i] += np.log10(displacement / realign)
 
         elif event == "sample":
             _, direction_list = gpm.get_displacement_data(get_context_arrays=True)
 
             s_idx = np.where(sampling_turns == current_turn)[0][0]
 
-            for i, (stored_log_displacement, direction, name) in enumerate(
+            for i, (stored_log_displacement, direction, realign, name) in enumerate(
                 zip(
                     birk_log_displacement_storage[s_idx],
                     direction_list,
+                    realign_module,
                     gpm.ghost_name,
                 )
             ):

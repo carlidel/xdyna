@@ -5,7 +5,8 @@ import xtrack as xt
 import xtrack.twiss as xtw
 from scipy.constants import c as c_light
 
-EW_GIVEN = 2.185575985356659 * (c_light / (4 * np.pi)) * 1e3 / 1e12 
+EW_GIVEN = 2.185575985356659 * (c_light / (4 * np.pi)) * 1e3 / 1e12
+
 
 class NormedParticles:
     """Class to store particles in normalized coordinates."""
@@ -156,16 +157,20 @@ class NormedParticles:
         gemitt_y = (
             self._twiss_data[1] / part._xobject.beta0[0] / part._xobject.gamma0[0]
         )
-        gemitt_z = self._twiss_data[8] / (part._xobject.beta0[0] / part._xobject.gamma0[0]) if not np.isnan(self._twiss_data[8]) else 1.0
+        gemitt_z = (
+            self._twiss_data[8] / (part._xobject.beta0[0] / part._xobject.gamma0[0])
+            if not np.isnan(self._twiss_data[8])
+            else 1.0
+        )
 
         self._normed_part[0] = part.x - self._twiss_data[2]
         self._normed_part[1] = part.px - self._twiss_data[3]
         self._normed_part[2] = part.y - self._twiss_data[4]
         self._normed_part[3] = part.py - self._twiss_data[5]
         self._normed_part[4] = part.zeta - self._twiss_data[6]
-        self._normed_part[5] = (
-            (part.ptau - self._twiss_data[7]) / part._xobject.beta0[0]
-        )
+        self._normed_part[5] = (part.ptau - self._twiss_data[7]) / part._xobject.beta0[
+            0
+        ]
 
         self._normed_part = np.dot(self._w_inv, self._normed_part)
 
@@ -177,6 +182,76 @@ class NormedParticles:
         self._normed_part[5] /= np.sqrt(gemitt_z)
 
         self._normed_part[:, mask] = np.nan
+
+    def manual_phys_to_norm(
+        self,
+        x=None,
+        px=None,
+        y=None,
+        py=None,
+        zeta=None,
+        ptau=None,
+        beta0=None,
+        gamma0=None,
+        state=None,
+    ):
+        if beta0 is None:
+            beta0 = 1.0
+        if gamma0 is None:
+            gamma0 = 1.0
+
+        coords = (x, px, y, py, zeta, ptau)
+        if all([coord is None for coord in coords]):
+            raise ValueError("At least one coordinate must be given")
+
+        # check if the given coordinates all have the same length
+        length = -1
+        for coord in coords:
+            if coord is not None:
+                if length == -1:
+                    length = len(coord)
+                elif length != len(coord):
+                    raise ValueError("All coordinates must have the same length")
+
+        for coord in coords:
+            if coord is None:
+                coord = np.zeros(length)
+
+        if state is None:
+            state = np.ones(length)
+        else:
+            if len(state) != length:
+                raise ValueError("State must have the same length as the coordinates")
+        mask = state <= 0
+
+        gemitt_x = self._twiss_data[0] / beta0 / gamma0
+        gemitt_y = self._twiss_data[1] / beta0 / gamma0
+        gemitt_z = (
+            self._twiss_data[8] / (beta0 / gamma0)
+            if not np.isnan(self._twiss_data[8])
+            else 1.0
+        )
+
+        tmp_normed_part = self._context.nplike_array_type((6, length))
+        tmp_normed_part[0] = x - self._twiss_data[2]
+        tmp_normed_part[1] = px - self._twiss_data[3]
+        tmp_normed_part[2] = y - self._twiss_data[4]
+        tmp_normed_part[3] = py - self._twiss_data[5]
+        tmp_normed_part[4] = zeta - self._twiss_data[6]
+        tmp_normed_part[5] = (ptau - self._twiss_data[7]) / beta0
+
+        tmp_normed_part = np.dot(self._w_inv, tmp_normed_part)
+
+        tmp_normed_part[0] /= np.sqrt(gemitt_x)
+        tmp_normed_part[1] /= np.sqrt(gemitt_x)
+        tmp_normed_part[2] /= np.sqrt(gemitt_y)
+        tmp_normed_part[3] /= np.sqrt(gemitt_y)
+        tmp_normed_part[4] /= np.sqrt(gemitt_z)
+        tmp_normed_part[5] /= np.sqrt(gemitt_z)
+
+        tmp_normed_part[:, mask] = np.nan
+
+        return tmp_normed_part
 
     def norm_to_phys(self, part: xp.Particles):
         """Transform the normalized coordinates to physical coordinates.
@@ -199,7 +274,11 @@ class NormedParticles:
         gemitt_y = (
             self._twiss_data[1] / part._xobject.beta0[0] / part._xobject.gamma0[0]
         )
-        gemitt_z = self._twiss_data[8] / (part._xobject.beta0[0] / part._xobject.gamma0[0]) if not np.isnan(self._twiss_data[8]) else 1.0
+        gemitt_z = (
+            self._twiss_data[8] / (part._xobject.beta0[0] / part._xobject.gamma0[0])
+            if not np.isnan(self._twiss_data[8])
+            else 1.0
+        )
 
         normed = self._normed_part.copy()
         normed[0] *= np.sqrt(gemitt_x)
