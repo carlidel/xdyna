@@ -201,7 +201,7 @@ class NormedParticles:
             gamma0 = 1.0
 
         coords = (x, px, y, py, zeta, ptau)
-        if all([coord is None for coord in coords]):
+        if all(coord is None for coord in coords):
             raise ValueError("At least one coordinate must be given")
 
         # check if the given coordinates all have the same length
@@ -299,6 +299,74 @@ class NormedParticles:
         part.py = normed[3] + self._twiss_data[5]
 
         return part
+
+    def manual_norm_to_phys(
+        self,
+        x_norm=None,
+        px_norm=None,
+        y_norm=None,
+        py_norm=None,
+        zeta_norm=None,
+        pzeta_norm=None,
+        beta0=None,
+        gamma0=None,
+        state=None,
+    ):
+        if beta0 is None:
+            beta0 = 1.0
+        if gamma0 is None:
+            gamma0 = 1.0
+
+        coords = (x_norm, px_norm, y_norm, py_norm, zeta_norm, pzeta_norm)
+        if all(coord is None for coord in coords):
+            raise ValueError("At least one coordinate must be given")
+
+        # check if the given coordinates all have the same length
+        length = -1
+        for coord in coords:
+            if coord is not None:
+                if length == -1:
+                    length = len(coord)
+                elif length != len(coord):
+                    raise ValueError("All coordinates must have the same length")
+
+        for coord in coords:
+            if coord is None:
+                coord = np.zeros(length)
+
+        if state is None:
+            state = np.ones(length)
+        else:
+            if len(state) != length:
+                raise ValueError("State must have the same length as the coordinates")
+        mask = state <= 0
+
+        gemitt_x = self._twiss_data[0] / beta0 / gamma0
+        gemitt_y = self._twiss_data[1] / beta0 / gamma0
+        gemitt_z = (
+            self._twiss_data[8] / (beta0 / gamma0)
+            if not np.isnan(self._twiss_data[8])
+            else 1.0
+        )
+
+        normed = np.array([x_norm, px_norm, y_norm, py_norm, zeta_norm, pzeta_norm])
+        normed[0] *= np.sqrt(gemitt_x)
+        normed[1] *= np.sqrt(gemitt_x)
+        normed[2] *= np.sqrt(gemitt_y)
+        normed[3] *= np.sqrt(gemitt_y)
+        normed[4] *= np.sqrt(gemitt_z)
+        normed[5] *= np.sqrt(gemitt_z)
+
+        normed = np.dot(self._w, normed)
+
+        x = normed[0] + self._twiss_data[2]
+        px = normed[1] + self._twiss_data[3]
+        y = normed[2] + self._twiss_data[4]
+        py = normed[3] + self._twiss_data[5]
+        zeta = normed[4] + self._twiss_data[6]
+        pzeta = normed[5] + self._twiss_data[7]
+
+        return x, px, y, py, zeta, pzeta
 
     @property
     def x_norm(self):
