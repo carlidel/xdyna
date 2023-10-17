@@ -90,9 +90,7 @@ def find_border_of_conglomerate(grid):
 # just formulas to evaluate DA for now...
 
 
-def border_from_radial_samples(
-    r_space, ang_space, at_turn_data, threshold, return_x_y=False
-):
+def border_from_radial_samples(r_space, ang_space, survival_data, return_x_y=False):
     """Compute the dynamic aperture borderfrom radial samples. The radial samples
     are assumed to be in the format (r, theta) and flattened, as in the output
     one would obtain from initial_distributions.radial_distribution.
@@ -103,10 +101,9 @@ def border_from_radial_samples(
         Unique radial samples.
     ang_space : np.ndarray
         Unique angular samples.
-    at_turn_data : np.ndarray
-        Array with the at_turn data for each particle.
-    threshold : float
-        Threshold to be used for the DA evaluation.
+    survival_data : np.ndarray
+        Boolean-like array with the survival information for each particle.
+        True means that the particle survived.
     return_x_y : bool, optional
         Whether to return the x and y coordinates of the border, by default False
 
@@ -119,15 +116,13 @@ def border_from_radial_samples(
     y_border : np.ndarray
         Y coordinates of the DA border. Only returned if return_x_y is True.
     """
-    survival_mask = (at_turn_data >= threshold).reshape(r_space.size, ang_space.size)
-
     idx_border = np.empty(ang_space.size, dtype=np.int64)
     for i in range(ang_space.size):
-        idx = np.argmin(survival_mask[:, i])
+        idx = np.argmin(survival_data[:, i])
         if idx > 0:
             idx_border[i] = idx - 1
         else:
-            if survival_mask[0, i]:
+            if survival_data[0, i]:
                 idx_border[i] = len(r_space) - 1
 
     r_border = np.array([r_space[idx] for idx in idx_border])
@@ -139,9 +134,7 @@ def border_from_radial_samples(
     return r_border
 
 
-def border_from_grid_samples(
-    x_space, y_space, at_turn_data, threshold, return_x_y=False
-):
+def border_from_grid_samples(x_space, y_space, survival_data, return_x_y=False):
     """Compute the dynamic aperture border from grid samples. The grid samples
     are assumed to be in the format (x, y) and flattened, as in the output
     one would obtain from initial_distributions.grid_distribution.
@@ -152,10 +145,9 @@ def border_from_grid_samples(
         Unique x samples.
     y_space : np.ndarray
         Unique y samples.
-    at_turn_data : np.ndarray
-        Array with the at_turn data for each particle.
-    threshold : float
-        Threshold to be used for the DA evaluation.
+    survival_data : np.ndarray
+        Boolean-like array with the survival information for each particle.
+        True means that the particle survived.
     return_x_y : bool, optional
         Whether to return the x and y coordinates of the border, by default False
 
@@ -170,9 +162,7 @@ def border_from_grid_samples(
     y_border : np.ndarray
         Y coordinates of the DA border. Only returned if return_x_y is True.
     """
-    survival_mask = (at_turn_data >= threshold).reshape(x_space.size, y_space.size)
-
-    border = find_border_of_conglomerate(find_largest_conglomerate(survival_mask))
+    border = find_border_of_conglomerate(find_largest_conglomerate(survival_data))
 
     # get_idx list of indices of the border
     x_idx, y_idx = np.where(border)
@@ -194,10 +184,9 @@ def border_from_grid_samples(
 
 
 def border_from_random_samples(
-    x_space,
-    y_space,
-    at_turn_data,
-    threshold,
+    x_data,
+    y_data,
+    survival_data,
     return_x_y=False,
     mirror_data=False,
     memory_threshold=1e9,
@@ -213,14 +202,13 @@ def border_from_random_samples(
 
     Parameters
     ----------
-    x_space : np.ndarray
+    x_data : np.ndarray
         x samples.
-    y_space : np.ndarray
+    y_data : np.ndarray
         y samples.
-    at_turn_data : np.ndarray
-        Array with the at_turn data for each particle.
-    threshold : float
-        Threshold to be used for the DA evaluation.
+    survival_data : np.ndarray
+        Boolean-like array with the survival information for each particle.
+        True means that the particle survived.
     return_x_y : bool, optional
         Whether to return the x and y coordinates of the border, by default False
     mirror_data : bool, optional
@@ -240,17 +228,15 @@ def border_from_random_samples(
         Y coordinates of the DA border. Only returned if return_x_y is True.
     """
     if mirror_data:
-        x_space = np.concatenate((x_space, -x_space, x_space, -x_space))
-        y_space = np.concatenate((y_space, y_space, -y_space, -y_space))
-        at_turn_data = np.concatenate(
-            (at_turn_data, at_turn_data, at_turn_data, at_turn_data)
+        x_data = np.concatenate((x_data, -x_data, x_data, -x_data))
+        y_data = np.concatenate((y_data, y_data, -y_data, -y_data))
+        survival_data = np.concatenate(
+            (survival_data, survival_data, survival_data, survival_data)
         )
-
-    survival_mask = at_turn_data >= threshold
 
     prev = time.process_time()
     print(f"Start SVM evaluation...", end="")
-    ML = MLBorder(x_space, y_space, survival_mask, memory_threshold=memory_threshold)
+    ML = MLBorder(x_data, y_data, survival_data, memory_threshold=memory_threshold)
     ML.fit(50)
     ML.evaluate(0.5)
     min_border_x, min_border_y = ML.border
@@ -477,6 +463,11 @@ def compute_da_4d(x, y, xrange, interp=trapz):
 
 
 # --------------------------------------------------------
+def is_list_of_lists_or_ndarrays(variable):
+    if isinstance(variable, list):
+        if all(isinstance(item, (list, np.ndarray)) for item in variable):
+            return True
+    return False
 
 
 def da_from_border(
@@ -492,9 +483,9 @@ def da_from_border(
 
     Parameters
     ----------
-    ang_border : np.ndarray
+    ang_border : np.ndarray or list of np.ndarray
         Angular coordinates of the DA border.
-    r_border : np.ndarray
+    r_border : np.ndarray or list of np.ndarray
         Radial coordinates of the DA border.
     interp_order : str, optional
         Interpolation order to be used for the DA evaluation, by default "1D".
@@ -516,13 +507,14 @@ def da_from_border(
     -------
     if return_dict is False:
         float
-            Mean dynamic aperture.
+            Mean dynamic aperture. If ang_border and r_border are lists, a ndarray
+            of mean dynamic apertures is returned.
 
     if return_dict is True:
         dict
-            mean: Mean dynamic aperture.
-            min: Minimum dynamic aperture.
-            max: Maximum dynamic aperture.
+            mean: Mean dynamic aperture. Or ndarray of mean dynamic apertures.
+            min: Minimum dynamic aperture. Or ndarray of minimum dynamic apertures.
+            max: Maximum dynamic aperture. Or ndarray of maximum dynamic apertures.
     """
 
     if interp_order == "1D":
@@ -547,6 +539,39 @@ def da_from_border(
         min_angle = ang_border.min()
     if max_angle is None:
         max_angle = ang_border.max()
+
+    if is_list_of_lists_or_ndarrays(ang_border):
+        if not return_dict:
+            mean_da = [
+                da_from_border(
+                    ang_border[i],
+                    r_border[i],
+                    interp_order=interp_order,
+                    interp_method=interp_method,
+                    min_angle=min_angle,
+                    max_angle=max_angle,
+                    return_dict=return_dict,
+                )
+                for i in range(len(ang_border))
+            ]
+            return np.array(mean_da)
+        else:
+            dict_list = [
+                da_from_border(
+                    ang_border[i],
+                    r_border[i],
+                    interp_order=interp_order,
+                    interp_method=interp_method,
+                    min_angle=min_angle,
+                    max_angle=max_angle,
+                    return_dict=return_dict,
+                )
+                for i in range(len(ang_border))
+            ]
+            merged_dict = {}
+            for key in dict_list[0].keys():
+                merged_dict[key] = np.array([d[key] for d in dict_list])
+            return merged_dict
 
     argsort = np.argsort(ang_border)
     ang_border = ang_border[argsort]
