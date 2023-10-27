@@ -286,8 +286,13 @@ def evaluate_tune_birkhoff(
     angle_1_x[angle_1_x < 0] += 2 * np.pi
     angle_1_y[angle_1_y < 0] += 2 * np.pi
 
+    idx_sort = np.argsort(part.particle_id)
+    angle_1_x = angle_1_x[idx_sort]
+    angle_1_y = angle_1_y[idx_sort]
+
     for time in tqdm(range(1, np.max(samples_to) + 1)):
         line.track(part, num_turns=1)
+        idx_sort = np.argsort(part.particle_id)
 
         if use_normed_particles:
             norm_part.phys_to_norm(part)
@@ -304,6 +309,9 @@ def evaluate_tune_birkhoff(
 
         angle_2_x[~alive] = np.nan
         angle_2_y[~alive] = np.nan
+
+        angle_2_x = angle_2_x[idx_sort]
+        angle_2_y = angle_2_y[idx_sort]
 
         delta_angle_x = angle_2_x - angle_1_x
         delta_angle_y = angle_2_y - angle_1_y
