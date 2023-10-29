@@ -84,10 +84,10 @@ def reverse_error_method(
         line.track(r_part, num_turns=t, backtrack=True)
 
         norm_r_part = NormedParticles(
-            twiss,
-            nemitt[0],
-            nemitt[1],
-            _context,
+            twiss=twiss,
+            nemitt_x=nemitt[0],
+            nemitt_y=nemitt[1],
+            _context=_context,
             part=r_part,
         )
 
