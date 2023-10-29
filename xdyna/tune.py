@@ -261,10 +261,10 @@ def evaluate_tune_birkhoff(
     angle_2_x = _context.nplike_array_type(n_particles)
     angle_2_y = _context.nplike_array_type(n_particles)
 
-    angle_1_x = 0.0
-    angle_1_y = 0.0
-    angle_2_x = 0.0
-    angle_2_y = 0.0
+    angle_1_x[:] = 0.0
+    angle_1_y[:] = 0.0
+    angle_2_x[:] = 0.0
+    angle_2_y[:] = 0.0
 
     sum_birkhoff_x = [
         _context.nplike_array_type(n_particles) for j in range(len(samples_length))
@@ -274,8 +274,8 @@ def evaluate_tune_birkhoff(
     ]
 
     for sum_bx, sum_by in zip(sum_birkhoff_x, sum_birkhoff_y):
-        sum_bx = 0.0
-        sum_by = 0.0
+        sum_bx[:] = 0.0
+        sum_by[:] = 0.0
 
     if use_normed_particles:
         angle_1_x = np.angle(norm_part.x_norm + 1j * norm_part.px_norm)
