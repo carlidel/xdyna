@@ -41,7 +41,13 @@ def reverse_error_method(
     """
     turns_list = np.sort(np.unique(turns_list))
     f_part = part.copy()
-    norm_f_part = NormedParticles(twiss, nemitt[0], nemitt[1], _context, part=f_part)
+    norm_f_part = NormedParticles(
+        twiss=twiss,
+        nemitt_x=nemitt[0],
+        nemitt_y=nemitt[1],
+        _context=_context,
+        part=f_part,
+    )
 
     out.write_data(
         "initial/x_norm",
