@@ -17,6 +17,7 @@ def reverse_error_method(
     out: GenericWriter,
     save_all=False,
     _context=xo.ContextCpu(),
+    force_backtrack=False,
 ):
     """Evaluate the reverse error method for the given values of turns.
 
@@ -38,6 +39,9 @@ def reverse_error_method(
         If True, the full particle distribution is saved at the time samples, by default False
     _context : xo.Context, optional
         xobjects context to be used, by default xo.ContextCPU()
+    force_backtrack : bool, optional
+        If True, the particles are forced to be backtracked, even if the line does
+        not fully support backtracking, by default False
     """
     turns_list = np.sort(np.unique(turns_list))
     f_part = part.copy()
@@ -87,7 +91,11 @@ def reverse_error_method(
         line.track(f_part, num_turns=delta_t)
         current_t = t
         r_part = f_part.copy()
-        line.track(r_part, num_turns=t, backtrack=True)
+        
+        if force_backtrack:
+            line.track(r_part, num_turns=t, backtrack="force")
+        else:
+            line.track(r_part, num_turns=t, backtrack=True)
 
         norm_r_part = NormedParticles(
             twiss=twiss,
