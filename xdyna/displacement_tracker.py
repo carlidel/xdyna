@@ -57,6 +57,7 @@ def track_displacement(
     log_displacement_storage = gpm.context.nplike_array_type(
         (len(gpm.ghost_name), len(gpm.part.particle_id))
     )
+    log_displacement_storage[:] = 0.0
 
     current_turn = 0
     pbar = tqdm(total=max_turn, disable=not tqdm_flag)
@@ -210,11 +211,13 @@ def track_displacement_birkhoff(
     birk_log_displacement_storage = gpm.context.nplike_array_type(
         (len(sampling_turns), len(gpm.ghost_name), len(gpm.part.particle_id))
     )
+    birk_log_displacement_storage[:] = 0.0
 
     if include_no_birkhoff:
         log_displacement_storage = gpm.context.nplike_array_type(
             (len(gpm.ghost_name), len(gpm.part.particle_id))
         )
+        log_displacement_storage[:] = 0.0
 
     current_turn = 0
     pbar = tqdm(total=max_turn, disable=not tqdm_flag)
