@@ -95,7 +95,7 @@ def gali_extractor(
         combo_list = _make_gali_combos(coord_list)[which_gali]
 
     if coord_list_nested is None:
-        coord_list_nested = coord_list.copy()
+        coord_list_nested = tuple(coord_list)
 
     nested_dict = dict(zip(coord_list, coord_list_nested))
 

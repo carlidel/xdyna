@@ -251,6 +251,7 @@ def track_displacement_birkhoff(
                         birk_log_displacement_storage[s_idx][i] = (
                             np.log10(displacement / realign)
                             * birk_weights_list[s_idx][event_idx]
+                            / realign_frequency
                             + birk_stored_log_displacement
                         )
             if include_no_birkhoff:
@@ -311,5 +312,57 @@ def track_displacement_birkhoff(
                     local_direction[5],
                 )
 
+    # save nturns of main particles
+    out.write_data("at_turn", gpm.context.nparray_from_context_array(gpm.part.at_turn))
+
+
+def track_displacement_raw(
+    gpm: GhostParticleManager,
+    line: xt.Line,
+    max_turn,
+    out: GenericWriter,
+    realign_frequency=1,
+    realign_module=None,
+    tqdm_flag=True,
+):
+    if realign_module is None:
+        realign_module_list = gpm.original_displacement
+    else:
+        realign_module_list = np.ones_like(gpm.original_displacement) * realign_module
+    gpm.save_metadata(out)
+
+    realigning_turns = np.arange(0, max_turn + 1, realign_frequency)[1:]
+
+    r_events = [("realign", t, i) for i, t in enumerate(realigning_turns)]
+    events = sorted(r_events, key=lambda x: x[1] + 0.5 if x[0] == "realign" else x[1])
+
+    storage = gpm.context.nplike_array_type(
+        (len(gpm.ghost_name), len(realigning_turns), len(gpm.part.particle_id))
+    )
+
+    current_turn = 0
+    pbar = tqdm(total=max_turn, disable=not tqdm_flag)
+    for event, turn, event_idx in events:
+        delta_turn = turn - current_turn
+        if delta_turn > 0:
+            line.track(gpm.part, num_turns=delta_turn)
+            for part in gpm.ghost_part:
+                line.track(part, num_turns=delta_turn)
+            current_turn = turn
+            pbar.update(delta_turn)
+
+        if event == "realign":
+            displacement_list, direction_list = gpm.realign_particles(
+                module=realign_module, get_context_arrays=True
+            )
+            for i, (displacement, realign) in enumerate(
+                zip(displacement_list, realign_module_list)
+            ):
+                storage[i][event_idx] = np.log10(displacement / realign)
+
+    out.write_data(
+        "log_displacement",
+        gpm.context.nparray_from_context_array(storage),
+    )
     # save nturns of main particles
     out.write_data("at_turn", gpm.context.nparray_from_context_array(gpm.part.at_turn))
