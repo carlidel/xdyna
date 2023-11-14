@@ -4,7 +4,23 @@ import cv2
 import numpy as np
 from scipy.special import lambertw as W
 
-from .ml import MLBorder
+# does not work for now...
+# from .ml import MLBorder
+
+
+@njit
+def dfs(i, j, conglomerate, matrix):
+    stack = [(i, j)]
+    while stack:
+        i, j = stack.pop()
+        if 0 <= i < len(matrix) and 0 <= j < len(matrix[0]) and matrix[i][j]:
+            matrix[i][j] = False
+            conglomerate[i][j] = True
+            stack.append((i - 1, j))
+            stack.append((i + 1, j))
+            stack.append((i, j - 1))
+            stack.append((i, j + 1))
+    return conglomerate
 
 
 def find_largest_conglomerate(matrix):
@@ -20,40 +36,14 @@ def find_largest_conglomerate(matrix):
     np.ndarray
         Matrix with only the largest conglomerate of True values.
     """
+    # matrix must be a 2d ndarray
+    if not isinstance(matrix, np.ndarray) or matrix.ndim != 2:
+        raise ValueError("matrix must be a 2d ndarray.")
 
-    def dfs(i, j, conglomerate):
-        if 0 <= i < len(matrix) and 0 <= j < len(matrix[0]) and matrix[i][j]:
-            matrix[i][j] = False
-            conglomerate.append((i, j))
-            dfs(i - 1, j, conglomerate)  # Up
-            dfs(i + 1, j, conglomerate)  # Down
-            dfs(i, j - 1, conglomerate)  # Left
-            dfs(i, j + 1, conglomerate)  # Right
+    conglomerate = matrix.copy()
+    dfs(0, 0, conglomerate, matrix.copy())
 
-    if not matrix or not matrix[0]:
-        return []
-
-    max_conglomerate_size = 0
-    largest_conglomerate = []
-
-    for i, col in enumerate(matrix):
-        for j, val in enumerate(col):
-            if val:
-                conglomerate = []
-                dfs(i, j, conglomerate)
-                if len(conglomerate) > max_conglomerate_size:
-                    max_conglomerate_size = len(conglomerate)
-                    largest_conglomerate = conglomerate
-
-    if not largest_conglomerate:
-        return []
-
-    # Create a new matrix with only the largest conglomerate
-    new_matrix = [[False] * len(matrix[0]) for _ in range(len(matrix))]
-    for i, j in largest_conglomerate:
-        new_matrix[i][j] = True
-
-    return np.asarray(new_matrix)
+    return np.asarray(conglomerate)
 
 
 def find_border_of_conglomerate(grid):
@@ -71,7 +61,7 @@ def find_border_of_conglomerate(grid):
         Grid with only the border of the conglomerate.
     """
     # temporarely convert to uint8
-    u8_grid = np.asarray(grid, dtype=np.uint8)
+    u8_grid = np.array(grid, dtype=np.uint8)
 
     # Perform dilation
     kernel = np.ones((3, 3), np.uint8)
@@ -82,7 +72,7 @@ def find_border_of_conglomerate(grid):
     eroded_matrix = cv2.erode(u8_grid, kernel, iterations=1)
 
     # Get the border by subtracting the eroded matrix from the dilated matrix
-    border = np.asarray(np.logical_and(u8_grid, dilated_matrix - eroded_matrix))
+    border = np.array(np.logical_and(u8_grid, dilated_matrix - eroded_matrix))
 
     return border
 
@@ -162,25 +152,21 @@ def border_from_grid_samples(x_space, y_space, survival_data, return_x_y=False):
     y_border : np.ndarray
         Y coordinates of the DA border. Only returned if return_x_y is True.
     """
-    border = find_border_of_conglomerate(find_largest_conglomerate(survival_data))
+    where_data = np.where(find_border_of_conglomerate(dfs(0, 0, np.zeros_like(survival_data), (survival_data.copy()))))
 
-    # get_idx list of indices of the border
-    x_idx, y_idx = np.where(border)
     # get the corresponding x and y values
-    x_border = np.array([x_space[idx] for idx in x_idx])
-    y_border = np.array([y_space[idx] for idx in y_idx])
-    # get the corresponding r and ang values
+    x_border = np.unique(x_space)[where_data[0]]
+    y_border = np.unique(y_space)[where_data[1]]
+    
     r_border = np.sqrt(x_border**2 + y_border**2)
     ang_border = np.arctan2(y_border, x_border)
 
-    # zip and sort the values by angle
-    border = sorted(zip(ang_border, r_border, x_border, y_border), key=lambda x: x[0])
-    # unzip the values
-    ang_border, r_border, x_border, y_border = zip(*border)
+    # sort by angle
+    ang_border, r_border, x_border, y_border = zip(*sorted(zip(ang_border, r_border, x_border, y_border)))
 
     if return_x_y:
-        return ang_border, r_border, x_border, y_border
-    return ang_border, r_border
+        return np.asarray(ang_border), np.asarray(r_border), np.asarray(x_border), np.asarray(y_border)
+    return np.asarray(ang_border), np.asarray(r_border)
 
 
 def border_from_random_samples(
