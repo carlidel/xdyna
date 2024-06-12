@@ -4,8 +4,156 @@ import xpart as xp
 import xtrack as xt
 import xtrack.twiss as xtw
 
+from tqdm.auto import tqdm
+
 from .generic_writer import GenericWriter
 from .normed_particles import NormedParticles
+
+
+def reverse_error_method_without_norm(
+    part: xp.Particles,
+    turns_list,
+    line: xt.Line,
+    out: GenericWriter,
+    save_all=False,
+    _context=xo.ContextCpu(),
+    force_backtrack=False,
+):
+    """Evaluate the reverse error method for the given values of turns. Does not consider Twiss or normalised emittance.
+
+    Parameters
+    ----------
+    part : xp.Particles
+        Particle object to be used as reference.
+    turns_list : List[int]
+        List of turns to be used for the study.
+    line : xt.Line
+        Line to be used for the study.
+    out : GenericWriter
+        Writer object to store the results.
+    save_all : bool, optional
+        If True, the full particle distribution is saved at the time samples, by default False
+    _context : xo.Context, optional
+        xobjects context to be used, by default xo.ContextCPU()
+    force_backtrack : bool, optional
+        If True, the particles are forced to be backtracked, even if the line does
+        not fully support backtracking, by default False
+    """
+    turns_list = np.sort(np.unique(turns_list))
+    f_part = part.copy()
+    ref_part = part.copy()
+    # ref_part.sort(interleave_lost_particles=True)
+    particle_idx = _context.nparray_from_context_array(ref_part.particle_id)
+    argsort_reference = np.argsort(particle_idx)
+
+    out.write_data(
+        "initial/x", _context.nparray_from_context_array(ref_part.x)[argsort_reference]
+    )
+    out.write_data(
+        "initial/px",
+        _context.nparray_from_context_array(ref_part.px)[argsort_reference],
+    )
+    out.write_data(
+        "initial/y", _context.nparray_from_context_array(ref_part.y)[argsort_reference]
+    )
+    out.write_data(
+        "initial/py",
+        _context.nparray_from_context_array(ref_part.py)[argsort_reference],
+    )
+    out.write_data(
+        "initial/zeta",
+        _context.nparray_from_context_array(ref_part.zeta)[argsort_reference],
+    )
+    out.write_data(
+        "initial/ptau",
+        _context.nparray_from_context_array(ref_part.ptau)[argsort_reference],
+    )
+
+    current_t = 0
+    for i, t in tqdm(enumerate(turns_list), total=len(turns_list)):
+        delta_t = t - current_t
+        line.track(f_part, num_turns=delta_t)
+        current_t = t
+        r_part = f_part.copy()
+
+        if force_backtrack:
+            line.track(r_part, num_turns=t, backtrack="force")
+        else:
+            line.track(r_part, num_turns=t, backtrack=True)
+
+        # r_part.sort(interleave_lost_particles=True)
+        particle_idx_r = _context.nparray_from_context_array(r_part.particle_id)
+        argsort_r = np.argsort(particle_idx_r)
+
+        if save_all:
+            out.write_data(
+                f"forward-backward/{t}/x",
+                _context.nparray_from_context_array(r_part.x)[argsort_r],
+            )
+            out.write_data(
+                f"forward-backward/{t}/px",
+                _context.nparray_from_context_array(r_part.px)[argsort_r],
+            )
+            out.write_data(
+                f"forward-backward/{t}/y",
+                _context.nparray_from_context_array(r_part.y)[argsort_r],
+            )
+            out.write_data(
+                f"forward-backward/{t}/py",
+                _context.nparray_from_context_array(r_part.py)[argsort_r],
+            )
+            out.write_data(
+                f"forward-backward/{t}/zeta",
+                _context.nparray_from_context_array(r_part.zeta)[argsort_r],
+            )
+            out.write_data(
+                f"forward-backward/{t}/pzeta",
+                _context.nparray_from_context_array(r_part.pzeta)[argsort_r],
+            )
+
+        rem = np.sqrt(
+            (
+                _context.nparray_from_context_array(ref_part.x)[argsort_reference]
+                - _context.nparray_from_context_array(r_part.x)[argsort_r]
+            )
+            ** 2
+            + (
+                _context.nparray_from_context_array(ref_part.px)[argsort_reference]
+                - _context.nparray_from_context_array(r_part.px)[argsort_r]
+            )
+            ** 2
+            + (
+                _context.nparray_from_context_array(ref_part.y)[argsort_reference]
+                - _context.nparray_from_context_array(r_part.y)[argsort_r]
+            )
+            ** 2
+            + (
+                _context.nparray_from_context_array(ref_part.py)[argsort_reference]
+                - _context.nparray_from_context_array(r_part.py)[argsort_r]
+            )
+            ** 2
+            + (
+                _context.nparray_from_context_array(ref_part.zeta)[argsort_reference]
+                - _context.nparray_from_context_array(r_part.zeta)[argsort_r]
+            )
+            ** 2
+            + (
+                _context.nparray_from_context_array(ref_part.ptau)[argsort_reference]
+                - _context.nparray_from_context_array(r_part.ptau)[argsort_r]
+            )
+            ** 2
+        )
+
+        out.write_data(f"rem/{t}", rem)
+
+    # save final at_turn of the forward particles
+    # f_part.sort(interleave_lost_particles=True)
+    idx_particles_at_turn = _context.nparray_from_context_array(f_part.particle_id)
+    argsort_particles_at_turn = np.argsort(idx_particles_at_turn)
+    out.write_data(
+        "at_turn",
+        _context.nparray_from_context_array(f_part.at_turn)[argsort_particles_at_turn],
+    )
 
 
 def reverse_error_method(
@@ -78,12 +226,15 @@ def reverse_error_method(
         _context.nparray_from_context_array(norm_f_part.pzeta_norm),
     )
 
-    out.write_data("initial/x", _context.nparray_from_context_array(f_part.x))
-    out.write_data("initial/px", _context.nparray_from_context_array(f_part.px))
-    out.write_data("initial/y", _context.nparray_from_context_array(f_part.y))
-    out.write_data("initial/py", _context.nparray_from_context_array(f_part.py))
-    out.write_data("initial/zeta", _context.nparray_from_context_array(f_part.zeta))
-    out.write_data("initial/ptau", _context.nparray_from_context_array(f_part.ptau))
+    particle_idx = _context.nparray_from_context_array(f_part.particle_id)
+    argsort_reference = np.argsort(particle_idx)
+
+    out.write_data("initial/x", _context.nparray_from_context_array(f_part.x)[argsort_reference])
+    out.write_data("initial/px", _context.nparray_from_context_array(f_part.px)[argsort_reference])
+    out.write_data("initial/y", _context.nparray_from_context_array(f_part.y)[argsort_reference])
+    out.write_data("initial/py", _context.nparray_from_context_array(f_part.py)[argsort_reference])
+    out.write_data("initial/zeta", _context.nparray_from_context_array(f_part.zeta)[argsort_reference])
+    out.write_data("initial/ptau", _context.nparray_from_context_array(f_part.ptau)[argsort_reference])
 
     current_t = 0
     for i, t in enumerate(turns_list):
@@ -97,7 +248,9 @@ def reverse_error_method(
         else:
             line.track(r_part, num_turns=t, backtrack=True)
 
-        r_part.sort(interleave_lost_particles=True)
+        idx_r = _context.nparray_from_context_array(r_part.particle_id)
+        argsort_r = np.argsort(idx_r)
+
         norm_r_part = NormedParticles(
             twiss=twiss,
             nemitt_x=nemitt[0],
@@ -134,27 +287,27 @@ def reverse_error_method(
 
             out.write_data(
                 f"forward-backward/{t}/x",
-                _context.nparray_from_context_array(r_part.x),
+                _context.nparray_from_context_array(r_part.x)[argsort_r],
             )
             out.write_data(
                 f"forward-backward/{t}/px",
-                _context.nparray_from_context_array(r_part.px),
+                _context.nparray_from_context_array(r_part.px)[argsort_r],
             )
             out.write_data(
                 f"forward-backward/{t}/y",
-                _context.nparray_from_context_array(r_part.y),
+                _context.nparray_from_context_array(r_part.y)[argsort_r],
             )
             out.write_data(
                 f"forward-backward/{t}/py",
-                _context.nparray_from_context_array(r_part.py),
+                _context.nparray_from_context_array(r_part.py)[argsort_r],
             )
             out.write_data(
                 f"forward-backward/{t}/zeta",
-                _context.nparray_from_context_array(r_part.zeta),
+                _context.nparray_from_context_array(r_part.zeta)[argsort_r],
             )
             out.write_data(
                 f"forward-backward/{t}/ptau",
-                _context.nparray_from_context_array(r_part.ptau),
+                _context.nparray_from_context_array(r_part.ptau)[argsort_r],
             )
 
         rem_norm = np.sqrt(
@@ -167,12 +320,12 @@ def reverse_error_method(
         )
 
         rem = np.sqrt(
-            (part.x - r_part.x) ** 2
-            + (part.px - r_part.px) ** 2
-            + (part.y - r_part.y) ** 2
-            + (part.py - r_part.py) ** 2
-            + (part.zeta - r_part.zeta) ** 2
-            + (part.ptau - r_part.ptau) ** 2
+            (part.x[argsort_reference] - r_part.x[argsort_r]) ** 2
+            + (part.px[argsort_reference] - r_part.px[argsort_r]) ** 2
+            + (part.y[argsort_reference] - r_part.y[argsort_r]) ** 2
+            + (part.py[argsort_reference] - r_part.py[argsort_r]) ** 2
+            + (part.zeta[argsort_reference] - r_part.zeta[argsort_r]) ** 2
+            + (part.ptau[argsort_reference] - r_part.ptau[argsort_r]) ** 2
         )
 
         out.write_data(f"rem_norm/{t}", _context.nparray_from_context_array(rem_norm))
